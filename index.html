@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distress Monitor</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; }
+        .main-container { display: flex; gap: 20px; margin-top: 20px; }
+        #camera-container { position: relative; width: 400px; height: 300px; background: #000; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        #log-box { width: 400px; height: 150px; background: #333; color: #0f0; padding: 10px; overflow-y: auto; margin-top: 10px; font-family: monospace; font-size: 12px; }
+        #status-box { width: 200px; height: 460px; background: green; border: 5px solid #fff; transition: background 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>Distress Detection System</h2>
+    <button id="start-btn">Start System</button>
+
+    <div class="main-container">
+        <div>
+            <div id="camera-container">
+                <video id="webcam" autoplay muted playsinline></video>
+            </div>
+            <div id="log-box">System Logs:<br>> Press Start to begin...</div>
+        </div>
+        
+        <div id="status-box">ALL CLEAR</div>
+    </div>
+
+    <audio id="alarm-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const statusBox = document.getElementById('status-box');
+        const logBox = document.getElementById('log-box');
+        const startBtn = document.getElementById('start-btn');
+        const alarm = document.getElementById('alarm-sound');
+
+        let distressCount = 0;
+        let isActive = false;
+
+        function addLog(msg) {
+            const time = new Date().toLocaleTimeString();
+            logBox.innerHTML += `<br>> [${time}] ${msg}`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                isActive = true;
+                startBtn.style.display = 'none';
+                addLog("Camera initialized.");
+                runDetection();
+            } catch (err) {
+                addLog("Error: Camera access denied.");
+            }
+        });
+
+        // This is a simulation logic. 
+        // In a real scenario, you'd plug in a library like face-api.js here.
+        function runDetection() {
+            if (!isActive) return;
+
+            // Simulating a detection check every 2 seconds
+            setInterval(() => {
+                // SIMULATION: Randomly trigger distress for demo 
+                // In reality, this would be: if (model.detect(face) == 'sad')
+                const isDistressed = Math.random() > 0.7; 
+
+                if (isDistressed) {
+                    distressCount++;
+                    statusBox.style.background = "red";
+                    statusBox.innerText = "DISTRESS DETECTED";
+                    addLog(`Distress event #${distressCount} detected!`);
+
+                    if (distressCount > 2) {
+                        alarm.play();
+                        addLog("ALARM TRIGGERED: Excessive distress.");
+                    }
+                } else {
+                    statusBox.style.background = "green";
+                    statusBox.innerText = "ALL CLEAR";
+                }
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
