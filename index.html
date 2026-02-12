@@ -2,24 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Safety Monitor v3</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety Signal Monitor</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
-        body { margin: 0; background: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-        #status-box { width: 100%; height: 60px; background: #2e7d32; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; transition: 0.3s; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #ffffff33; }
+        body { margin: 0; background: #121212; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #status-box { width: 100%; height: 60px; background: #2e7d32; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; transition: 0.3s; border-bottom: 2px solid #444; }
         #video-container { width: 95%; max-width: 500px; margin-top: 15px; border-radius: 12px; overflow: hidden; border: 2px solid #333; background: #000; }
         video { width: 100%; display: block; transform: scaleX(-1); }
         #log-box { width: 90%; max-width: 480px; height: 100px; background: #000; margin-top: 10px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #333; color: #00ff00; border-radius: 8px; }
         .controls { width: 90%; max-width: 480px; margin-top: 10px; background: #1e1e1e; padding: 15px; border-radius: 12px; box-sizing: border-box; }
-        input[type=range] { width: 100%; height: 25px; }
         .alarm-active { background: #d32f2f !important; animation: pulse 0.6s infinite; }
         @keyframes pulse { 0% { background-color: #d32f2f; } 50% { background-color: #ff5252; } 100% { background-color: #d32f2f; } }
-        .btn-group { display: flex; gap: 10px; margin: 15px 0; width: 90%; max-width: 480px; }
-        button { flex: 1; padding: 15px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        button { padding: 15px 30px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; border: none; margin-top: 10px; }
         #start-btn { background: #2196f3; color: white; }
-        #reset-btn { background: #555; color: white; display: none; }
+        #reset-btn { background: #f44336; color: white; display: none; }
     </style>
 </head>
 <body>
@@ -30,16 +28,14 @@
         <video id="input_video" playsinline></video>
     </div>
 
-    <div class="btn-group">
-        <button id="start-btn">START CAMERA</button>
-        <button id="reset-btn">RESET ALARM</button>
-    </div>
+    <button id="start-btn">START CAMERA</button>
+    <button id="reset-btn">RESET ALARM</button>
 
-    <div id="log-box">Logs:<br>> Waiting to start...</div>
+    <div id="log-box">Logs:<br>> Waiting for user...</div>
 
     <div class="controls">
-        <label>AI Sensitivity: <span id="sens-val" style="color:#2196f3;">0.5</span></label>
-        <input type="range" id="sensitivity" min="0.1" max="0.9" step="0.1" value="0.5">
+        <label>Sensitivity: <span id="sens-val" style="color:#2196f3;">0.5</span></label>
+        <input type="range" id="sensitivity" min="0.1" max="0.9" step="0.1" value="0.5" style="width:100%;">
     </div>
 
     <audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" loop></audio>
@@ -52,13 +48,12 @@
         const startBtn = document.getElementById('start-btn');
         const resetBtn = document.getElementById('reset-btn');
         const sensSlider = document.getElementById('sensitivity');
-        const sensDisplay = document.getElementById('sens-val');
         
         let signalCount = 0;
         let isCurrentlySignaling = false;
 
         sensSlider.oninput = function() {
-            sensDisplay.innerText = this.value;
+            document.getElementById('sens-val').innerText = this.value;
             hands.setOptions({ minDetectionConfidence: parseFloat(this.value) });
         };
 
@@ -70,6 +65,7 @@
         function onResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const hand = results.multiHandLandmarks[0];
+                // Hand Logic for Help Signal: Thumb tucked, fingers fold over.
                 const thumbTucked = hand[4].x > hand[13].x; 
                 const fingersFolded = hand[8].y > hand[6].y && hand[12].y > hand[10].y;
 
@@ -77,43 +73,41 @@
                     if (!isCurrentlySignaling) {
                         isCurrentlySignaling = true;
                         signalCount++;
-                        handleDetection();
+                        updateUI(true);
                     }
                 } else {
                     if (isCurrentlySignaling) {
                         isCurrentlySignaling = false;
-                        if (signalCount < 4) {
-                            statusBox.style.background = "#2e7d32";
-                            statusBox.innerText = "MONITORING...";
-                        }
+                        if (signalCount < 4) updateUI(false);
                     }
                 }
             }
         }
 
-        function handleDetection() {
-            statusBox.style.background = "#d32f2f";
-            statusBox.innerText = "SIGNAL DETECTED";
-            addLog(`Signal #${signalCount} identified.`);
-            
-            if (signalCount === 4) {
-                addLog(`ALARM TRIGGERED!`);
-                alarm.play();
-                statusBox.classList.add('alarm-active');
-                resetBtn.style.display = "block";
+        function updateUI(isDistress) {
+            if (isDistress) {
+                statusBox.style.background = "#d32f2f";
+                statusBox.innerText = "SIGNAL DETECTED";
+                addLog(`Signal #${signalCount} detected.`);
+                if (signalCount === 4) {
+                    alarm.play();
+                    statusBox.classList.add('alarm-active');
+                    resetBtn.style.display = "block";
+                }
+            } else {
+                statusBox.style.background = "#2e7d32";
+                statusBox.innerText = "MONITORING...";
             }
         }
 
-        resetBtn.addEventListener('click', () => {
+        resetBtn.onclick = () => {
             alarm.pause();
             alarm.currentTime = 0;
             signalCount = 0;
             statusBox.classList.remove('alarm-active');
-            statusBox.style.background = "#2e7d32";
-            statusBox.innerText = "MONITORING...";
             resetBtn.style.display = "none";
-            addLog("System Reset.");
-        });
+            addLog("System reset.");
+        };
 
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
@@ -121,15 +115,14 @@
 
         const camera = new Camera(videoElement, {
             onFrame: async () => { await hands.send({image: videoElement}); },
-            width: 480, height: 360,
-            facingMode: 'user' // Forces front camera on mobile
+            width: 480, height: 360
         });
         
-        startBtn.addEventListener('click', () => {
+        startBtn.onclick = () => {
             camera.start();
             startBtn.style.display = 'none';
-            addLog("Camera active.");
-        });
+            addLog("Camera started.");
+        };
     </script>
 </body>
 </html>
