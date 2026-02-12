@@ -1,65 +1,123 @@
-const videoElement = document.getElementById('input_video');
-    const statusBox = document.getElementById('status-indicator');
-    const logBox = document.getElementById('log-box');
-    const alarm = document.getElementById('alarm');
-    
-    let signalCount = 0;
-    let isCurrentlySignaling = false;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Safety Monitor + Sensitivity</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding-bottom: 20px; }
+        #status-box { width: 90%; height: 70px; margin: 15px 0; background: green; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border-radius: 10px; transition: 0.3s; text-align: center; }
+        #video-container { width: 90%; max-width: 480px; position: relative; border: 2px solid #444; border-radius: 8px; overflow: hidden; background: #000; }
+        video { width: 100%; display: block; transform: scaleX(-1); }
+        #log-box { width: 85%; height: 100px; background: #000; margin-top: 10px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 11px; border: 1px solid #333; color: #0f0; }
+        .controls { width: 85%; margin-top: 15px; background: #2a2a2a; padding: 15px; border-radius: 8px; text-align: left; }
+        input[type=range] { width: 100%; margin: 10px 0; }
+        .alarm-active { background: red !important; animation: flash 0.5s infinite; }
+        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        button#start-btn { padding: 15px 30px; font-size: 18px; background: #007bff; color: white; border: none; border-radius: 5px; margin-top: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
 
-    function onResults(results) {
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const hand = results.multiHandLandmarks[0];
+    <div id="status-box">SYSTEM READY</div>
+
+    <div id="video-container">
+        <video id="input_video" playsinline></video>
+    </div>
+
+    <button id="start-btn">TAP TO START CAMERA</button>
+
+    <div id="log-box">System Logs:<br>> Waiting for user to start...</div>
+
+    <div class="controls">
+        <label>AI Sensitivity: <span id="sens-val">0.5</span></label><br>
+        <small>(Higher = More strict, Lower = Easier to trigger)</small>
+        <input type="range" id="sensitivity" min="0.1" max="0.9" step="0.1" value="0.5">
+    </div>
+
+    <audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const statusBox = document.getElementById('status-box');
+        const logBox = document.getElementById('log-box');
+        const alarm = document.getElementById('alarm');
+        const startBtn = document.getElementById('start-btn');
+        const sensSlider = document.getElementById('sensitivity');
+        const sensDisplay = document.getElementById('sens-val');
         
-        // Tracking: Thumb tip (4) vs Pinky base (17) and Finger tips (8, 12, 16)
-        const thumbTucked = hand[4].x > hand[13].x; // Thumb pulled toward palm
-        const fingersFolded = hand[8].y > hand[6].y && hand[12].y > hand[10].y; // Fingers down
+        let signalCount = 0;
+        let isCurrentlySignaling = false;
+        let detectionConfidence = 0.5;
 
-        if (thumbTucked && fingersFolded) {
-          if (!isCurrentlySignaling) {
-            isCurrentlySignaling = true;
-            signalCount++;
-            handleDetection();
-          }
-        } else {
-          if (isCurrentlySignaling) {
-            isCurrentlySignaling = false;
-            resetUI();
-          }
+        sensSlider.oninput = function() {
+            detectionConfidence = parseFloat(this.value);
+            sensDisplay.innerText = this.value;
+            // Update the AI settings on the fly
+            hands.setOptions({ minDetectionConfidence: detectionConfidence });
+            addLog(`Sensitivity updated to ${this.value}`);
+        };
+
+        function addLog(msg) {
+            const t = new Date().toLocaleTimeString().split(' ')[0];
+            logBox.innerHTML += `<br>> [${t}] ${msg}`;
+            logBox.scrollTop = logBox.scrollHeight;
         }
-      }
-    }
 
-    function handleDetection() {
-      statusBox.style.background = "red";
-      statusBox.innerText = "SIGNAL DETECTED";
-      
-      if (signalCount < 4) {
-        logBox.innerHTML += `<br>> [LOG] Signal identified ${signalCount} time(s).`;
-      } else if (signalCount === 4) {
-        logBox.innerHTML += `<br>> [CRITICAL] 4th Signal identified! Starting Alarm...`;
-        alarm.play();
-        statusBox.classList.add('alarm-active');
-      } else {
-        logBox.innerHTML += `<br>> [ALARM] Continuing detection #${signalCount}`;
-      }
-      
-      logBox.scrollTop = logBox.scrollHeight;
-    }
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                
+                // Logic: Thumb tucked (4) and Index/Middle fingers (8, 12) folded down
+                const thumbTucked = hand[4].x > hand[13].x; 
+                const fingersFolded = hand[8].y > hand[6].y && hand[12].y > hand[10].y;
 
-    function resetUI() {
-      statusBox.style.background = "green";
-      statusBox.innerText = "SAFE / SCANNING";
-      logBox.innerHTML += `<br>> System reset. Waiting for next signal...`;
-      logBox.scrollTop = logBox.scrollHeight;
-    }
+                if (thumbTucked && fingersFolded) {
+                    if (!isCurrentlySignaling) {
+                        isCurrentlySignaling = true;
+                        signalCount++;
+                        handleDetection();
+                    }
+                } else {
+                    if (isCurrentlySignaling) {
+                        isCurrentlySignaling = false;
+                        statusBox.style.background = "green";
+                        statusBox.innerText = "MONITORING...";
+                    }
+                }
+            }
+        }
 
-    // Initialize MediaPipe
-    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-    hands.onResults(onResults);
+        function handleDetection() {
+            statusBox.style.background = "red";
+            statusBox.innerText = "SIGNAL DETECTED";
+            
+            if (signalCount < 4) {
+                addLog(`Signal #${signalCount} identified.`);
+            } else if (signalCount === 4) {
+                addLog(`4th SIGNAL! ALARM TRIGGERED!`);
+                alarm.play();
+                statusBox.classList.add('alarm-active');
+            }
+        }
 
-    const camera = new Camera(videoElement, {
-      onFrame: async () => { await hands.send({image: videoElement}); },
-      width: 480, height: 360
-    });
-    camera.start();
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 480, height: 360
+        });
+        
+        startBtn.addEventListener('click', () => {
+            camera.start();
+            startBtn.style.display = 'none';
+            statusBox.innerText = "MONITORING...";
+            addLog("Camera active. Please show hand.");
+        });
+    </script>
+</body>
+</html>
